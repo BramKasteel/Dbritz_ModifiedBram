@@ -31,7 +31,7 @@ class TextCNN(object):
         l2_loss = tf.constant(0.0)
 
         # Embedding layer
-        ### Bram: itmaps vocubulary word indices to low-dimensional vector representations.
+        ### Bram: it maps vocubulary word indices to low-dimensional vector representations.
         ### It is essentially a lookup table that is learned from data.
         ### W will be the embedding matrix that is learned during training.
         with tf.device('/cpu:0'), tf.name_scope("embedding"):
@@ -40,6 +40,8 @@ class TextCNN(object):
                 name="W")
             self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
             self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
+        ## BRAM: how is this embedding learned? Does backpropagation work????
+        ## Homework!!!
 
         # Create a convolution + maxpool layer for each filter size
         pooled_outputs = []
