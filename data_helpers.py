@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import itertools
+import pickle
 from collections import Counter
 
 #Source files are just lines of text data
@@ -44,6 +45,15 @@ def load_data_and_labels(positive_data_file, negative_data_file):
     negative_labels = [[1, 0] for _ in negative_examples]
     y = np.concatenate([positive_labels, negative_labels], 0)
     return [x_text, y]
+
+
+#New function to load test set
+def load_dev_set(filename):
+    with open(filename,'rb') as f:
+         [x_dev, y_dev] = pickle.load(f)
+    return [x_dev, y_dev]
+    
+    
 
 
 def batch_iter(data, batch_size, num_epochs, shuffle=True):

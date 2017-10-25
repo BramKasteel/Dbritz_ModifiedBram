@@ -1,11 +1,16 @@
 #! /usr/bin/env python
 
+"""
+Now includes a split in train/validation/test set. See if it works and how we can use the result
+"""
+
 import tensorflow as tf
 import numpy as np
 import os
 import time
 import datetime
 import data_helpers
+import pickle
 from text_cnn import TextCNN
 from tensorflow.contrib import learn
 
@@ -13,7 +18,8 @@ from tensorflow.contrib import learn
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
+tf.flags.DEFINE_float("validation_percentage", .1, "Percentage of the training data to use for validation")
+tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for testing")
 tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos", "Data source for the positive data.")
 tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg", "Data source for the negative data.")
 
@@ -64,13 +70,22 @@ shuffle_indices = np.random.permutation(np.arange(len(y)))
 x_shuffled = x[shuffle_indices]
 y_shuffled = y[shuffle_indices]
 
-# Split train/test set
-# TODO: This is very crude, should use cross-validation
+# Split train/val/test set
 dev_sample_index = -1 * int(FLAGS.dev_sample_percentage * float(len(y)))
-x_train, x_dev = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
-y_train, y_dev = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
+validation_index = dev_sample_index + -1*int(FLAGS.validation_percentage * float(len(y)))
+x_train, x_val, x_dev = x_shuffled[:validation_index], x_shuffled[validation_index:dev_sample_index], x_shuffled[dev_sample_index:]
+y_train, y_val, y_dev = y_shuffled[:validation_index], y_shuffled[validation_index:dev_sample_index], y_shuffled[dev_sample_index:]
 print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
-print("Train/Dev split: {:d}/{:d}".format(len(y_train), len(y_dev)))
+print("Train/Val/Dev split: {:d}/{:d}/{:d}".format(len(y_train), len(y_val), len(y_dev)))
+
+# Output directory for models and summaries
+timestamp = str(int(time.time()))
+out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))  ### Make it a customizable folder name plz!
+print("Writing to {}\n".format(out_dir))
+if not os.path.exists(out_dir+'/testdata/'):
+            os.makedirs(out_dir+'/testdata/')
+with open(out_dir+'/testdata/dev_data.pickle','wb') as f:
+    pickle.dump([x_dev, y_dev], f)
 
 
 # Training
@@ -107,10 +122,7 @@ with tf.Graph().as_default():
                 grad_summaries.append(sparsity_summary)
         grad_summaries_merged = tf.summary.merge(grad_summaries)
 
-        # Output directory for models and summaries
-        timestamp = str(int(time.time()))
-        out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))
-        print("Writing to {}\n".format(out_dir))
+        
 
         # Summaries for loss and accuracy
         loss_summary = tf.summary.scalar("loss", cnn.loss)
@@ -121,6 +133,11 @@ with tf.Graph().as_default():
         train_summary_dir = os.path.join(out_dir, "summaries", "train")
         train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
+        # Validation Summaries
+        val_summary_op = tf.summary.merge([loss_summary, acc_summary])
+        val_summary_dir = os.path.join(out_dir, "summaries", "val")
+        val_summary_writer = tf.summary.FileWriter(val_summary_dir, sess.graph)
+        
         # Dev summaries
         dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
         dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
@@ -152,9 +169,26 @@ with tf.Graph().as_default():
                 [train_op, global_step, train_summary_op, cnn.loss, cnn.accuracy],
                 feed_dict)
             time_str = datetime.datetime.now().isoformat()
-            #print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
             train_summary_writer.add_summary(summaries, step)
-
+        
+        def val_step(x_batch, y_batch, best_acc, writer=None):
+            """
+            Evaluates model on a validation subset. Might also be incorporated in function dev_step.
+            """
+            feed_dict = {
+              cnn.input_x: x_batch,
+              cnn.input_y: y_batch,
+              cnn.dropout_keep_prob:1.0}
+            step, summaries, loss, accuracy = sess.run(
+                    [global_step, dev_summary_op, cnn.loss, cnn.accuracy],
+                    feed_dict)
+            time_str = datetime.datetime.now().isoformat()
+            print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
+            if writer:
+                writer.add_summary(summaries, step)
+            return [accuracy>best_acc, accuracy]
+        
         def dev_step(x_batch, y_batch, writer=None):
             """
             Evaluates model on a dev set
@@ -176,6 +210,7 @@ with tf.Graph().as_default():
         batches = data_helpers.batch_iter(
             list(zip(x_train, y_train)), FLAGS.batch_size, FLAGS.num_epochs)
         # Training loop. For each batch...
+        best_acc = 0;
         for batch in batches:
             x_batch, y_batch = zip(*batch)
             train_step(x_batch, y_batch)
@@ -183,6 +218,16 @@ with tf.Graph().as_default():
             if current_step % FLAGS.evaluate_every == 0:
                 print("\nEvaluation:")
                 dev_step(x_dev, y_dev, writer=dev_summary_writer)
+                newbest, accuracy = val_step(x_val, y_val, best_acc, writer=val_summary_writer)
+                
+                if newbest:
+                    best_acc = accuracy
+                    try:  #Remove (or try to) former best file if we have found an improvement
+                        os.remove(checkpoint_prefix+"best")
+                    except OSError:
+                        pass
+                    saver.save(sess, checkpoint_prefix+"best")
+                    
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 path = saver.save(sess, checkpoint_prefix, global_step=current_step)

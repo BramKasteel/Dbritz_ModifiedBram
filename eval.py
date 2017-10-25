@@ -21,6 +21,7 @@ tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_string("checkpoint_dir", "", "Checkpoint directory from training run")
 tf.flags.DEFINE_boolean("eval_train", False, "Evaluate on all training data")
+tf.flags.DEFINE_string("dev_set","","Datafile for testing accuracy of model")
 
 # Misc Parameters
 tf.flags.DEFINE_boolean("allow_soft_placement", True, "Allow device soft device placement")
@@ -38,20 +39,29 @@ print("")
 if FLAGS.eval_train:
     x_raw, y_test = data_helpers.load_data_and_labels(FLAGS.positive_data_file, FLAGS.negative_data_file)
     y_test = np.argmax(y_test, axis=1)
+    # Map data into vocabulary
+    vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
+    vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
+    x_test = np.array(list(vocab_processor.transform(x_raw)))
 else:
-    x_raw = ["a masterpiece four years in the making", "everything is off."]
-    y_test = [1, 0]
+    x_test, y_test = data_helpers.load_dev_set(os.path.abspath(FLAGS.dev_set))
+    y_test = np.argmax(y_test, axis=1)
+    # Transform back to real words
+    vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
+    vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
+    x_raw = np.array(list(vocab_processor.reverse(x_test)))
 
-# Map data into vocabulary
-vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
-vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
-x_test = np.array(list(vocab_processor.transform(x_raw)))
+
 
 print("\nEvaluating...\n")
 
 # Evaluation
 # ==================================================
-checkpoint_file = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
+#checkpoint_file = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
+#Use best performing network
+checkpoint_file = os.path.abspath(FLAGS.checkpoint_dir + "modelbest")
+
+
 graph = tf.Graph()
 with graph.as_default():
     session_conf = tf.ConfigProto(
@@ -86,6 +96,8 @@ if y_test is not None:
     correct_predictions = float(sum(all_predictions == y_test))
     print("Total number of test examples: {}".format(len(y_test)))
     print("Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
+
+## DO THIS AFTER WE KNOW HOW TO BACK TRANSLATE
 
 # Save the evaluation to a csv
 predictions_human_readable = np.column_stack((np.array(x_raw), all_predictions))

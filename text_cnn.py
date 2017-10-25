@@ -40,8 +40,6 @@ class TextCNN(object):
                 name="W")
             self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
             self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
-        ## BRAM: how is this embedding learned? Does backpropagation work????
-        ## Homework!!!
 
         # Create a convolution + maxpool layer for each filter size
         pooled_outputs = []
@@ -67,7 +65,6 @@ class TextCNN(object):
                     padding='VALID',
                     name="pool")
                 pooled_outputs.append(pooled)
-        ### BRAM:: HUISWERK; Ga na hoe alle tensoren er uit zien.
         
         # Combine all the pooled features
         num_filters_total = num_filters * len(filter_sizes)
@@ -79,7 +76,6 @@ class TextCNN(object):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
 
         # Final (unnormalized) scores and predictions
-        # BRAM: CHANGE TO SOFTMAX IF WE ARE ALSO INTERESTED IN PROBABILITIES, WHICH WE PROBABLY ARE
         with tf.name_scope("output"):
             W = tf.get_variable(
                 "W",
