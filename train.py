@@ -12,9 +12,8 @@ import datetime
 import data_helpers
 import pickle
 import yaml
-import math
-import shutil #For copying the best model to a different folder (else it will be deleted)
-import fnmatch
+import shutil #For copying files
+import fnmatch #For searching filenames
 from text_cnn import TextCNN
 from tensorflow.contrib import learn
 
@@ -106,13 +105,26 @@ y_train, y_val, y_dev = y_shuffled[:validation_index], y_shuffled[validation_ind
 print("Vocabulary Size: {:d}".format(len(vocab_processor.vocabulary_)))
 print("Train/Val/Dev split: {:d}/{:d}/{:d}".format(len(y_train), len(y_val), len(y_dev)))
 
-# Output directory for models and summaries
+# Create all necessary output folders (if they do not yet exist)
+# Runs dir
 timestamp = str(int(time.time()))
 out_dir = os.path.abspath(os.path.join(os.path.curdir, "runs", timestamp))  ### Make it a customizable folder name plz!
 print("Writing to {}\n".format(out_dir))
-if not os.path.exists(out_dir+'/testdata/'):
-            os.makedirs(out_dir+'/testdata/')
-with open(out_dir+'/testdata/dev_data.pickle','wb') as f:
+# Testdata dir
+testdata_dir = os.path.abspath(os.path.join(out_dir,"testdata"))
+if not os.path.exists(testdata_dir):
+    os.makedirs(testdata_dir)
+# Checkpoint dir
+checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
+checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+if not os.path.exists(checkpoint_dir):
+    os.makedirs(checkpoint_dir)
+# Best model dir (Tensorflow usually only saves the newest 5 checkpoints)
+bestmodel_dir = os.path.abspath(os.path.join(out_dir,"bestmodel"))
+if not os.path.exists(bestmodel_dir):
+    os.makedirs(bestmodel_dir)
+
+with open(os.path.join(testdata_dir,'dev_data.pickle'),'wb') as f:
     pickle.dump([x_dev, y_dev], f)
 
 
@@ -168,16 +180,9 @@ with tf.Graph().as_default():
         dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
         dev_summary_dir = os.path.join(out_dir, "summaries", "dev")
         dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
-
-        # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
-        checkpoint_dir = os.path.abspath(os.path.join(out_dir, "checkpoints"))
-        checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        
+        # Initialize saver
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
-        # Directory for saving the best model
-        if not os.path.exists(out_dir+'/bestmodel/'):
-            os.makedirs(out_dir+'/bestmodel/')
         
         # Write vocabulary
         vocab_processor.save(os.path.join(out_dir, "vocab"))
@@ -262,23 +267,25 @@ with tf.Graph().as_default():
                 
                 if newbest:
                     best_acc = accuracy
-                    try:  #Remove (or try to) former best file if we have found an improvement
-                        os.remove(checkpoint_prefix+"best")
-                    except OSError:
-                        pass
+                    #1) First remove the old best file
+                    for file in os.listdir(checkpoint_dir):
+                        if fnmatch.fnmatch(file,'modelbest*'):
+                            file_path = os.path.abspath(os.path.join(checkpoint_dir,file))
+                            os.unlink(file_path)
+                    #2) Save the new best file as such
                     saver.save(sess, checkpoint_prefix+"best")
-                    #Copy this best model to a different file
-                    for file in os.listdir(out_dir+'/bestmodel/'):
-                        file_path = os.path.join(out_dir+'/bestmodel/',file)
-                        try:
+                    #3) Copy this new best model to a different folder bestmodel_dir
+                    #      (first remove what was in that folder)
+                    for file in os.listdir(bestmodel_dir):
+                        file_path = os.path.join(bestmodel_dir,file)
+                        try: #TODO: is dit niet een beetje voorzichtig?
                             if os.path.isfile(file_path):
                                 os.unlink(file_path)
                         except Exception as e:
                             print(e)
                     for file in os.listdir(checkpoint_dir):
                         if fnmatch.fnmatch(file,'modelbest*'):
-                            shutil.copy2(checkpoint_dir+'/'+file, out_dir+'/bestmodel/')
-                    #TODO: make al folders and filenames more clear: it is beginning to become a mess
+                            shutil.copy2(os.path.join(checkpoint_dir,file), bestmodel_dir)
                     
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
