@@ -13,6 +13,8 @@ import data_helpers
 import pickle
 import yaml
 import math
+import shutil #For copying the best model to a different folder (else it will be deleted)
+import fnmatch
 from text_cnn import TextCNN
 from tensorflow.contrib import learn
 
@@ -59,9 +61,9 @@ with open("config.yml",'r') as ymlfile:
 dataset_name = cfg["datasets"]["default"]
 if FLAGS.enable_word_embeddings and cfg['word_embeddings']['default'] is not None:
     embedding_name = cfg['word_embeddings']['default']
-    embedding_dimension = cfg['word_embeddings'][embedding_name]['dimension']
+    embedding_dim = cfg['word_embeddings'][embedding_name]['dimension']
 else:
-    embedding_dimension = FLAGS.embedding_dim    
+    embedding_dim = FLAGS.embedding_dim    
 
 
 # Data Preparation
@@ -127,7 +129,7 @@ with tf.Graph().as_default():
             sequence_length=x_train.shape[1],
             num_classes=y_train.shape[1],
             vocab_size=len(vocab_processor.vocabulary_),
-            embedding_size=FLAGS.embedding_dim,
+            embedding_size=embedding_dim,
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
             num_filters=FLAGS.num_filters,
             l2_reg_lambda=FLAGS.l2_reg_lambda)
@@ -173,14 +175,17 @@ with tf.Graph().as_default():
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
-
+        # Directory for saving the best model
+        if not os.path.exists(out_dir+'/bestmodel/'):
+            os.makedirs(out_dir+'/bestmodel/')
+        
         # Write vocabulary
         vocab_processor.save(os.path.join(out_dir, "vocab"))
 
         # Initialize all variables
         sess.run(tf.global_variables_initializer())
         if FLAGS.enable_word_embeddings and cfg['word_embeddings']['default'] is not None:
-            vocabulary = vocab+processor.vocabulary_
+            vocabulary = vocab_processor.vocabulary_
             initW = None
             if embedding_name == 'word2vec':
                 #load embedding word2vec vectors
@@ -262,6 +267,18 @@ with tf.Graph().as_default():
                     except OSError:
                         pass
                     saver.save(sess, checkpoint_prefix+"best")
+                    #Copy this best model to a different file
+                    for file in os.listdir(out_dir+'/bestmodel/'):
+                        file_path = os.path.join(out_dir+'/bestmodel/',file)
+                        try:
+                            if os.path.isfile(file_path):
+                                os.unlink(file_path)
+                        except Exception as e:
+                            print(e)
+                    for file in os.listdir(checkpoint_dir):
+                        if fnmatch.fnmatch(file,'modelbest*'):
+                            shutil.copy2(checkpoint_dir+'/'+file, out_dir+'/bestmodel/')
+                    #TODO: make al folders and filenames more clear: it is beginning to become a mess
                     
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
