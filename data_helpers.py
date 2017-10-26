@@ -68,7 +68,6 @@ def load_dev_set(filename):
          [x_dev, y_dev] = pickle.load(f)
     return [x_dev, y_dev]    
 
-#TODO: what happens here?
 def load_data_labels(datasets):
     """
     Load data and labels
@@ -82,7 +81,7 @@ def load_data_labels(datasets):
     labels = []
     for i in range(len(x_text)):
         label = [0 for j in datasets['target_names']]
-        label[datasets['target'][i]] = 1 #TODO: the i should not be here??
+        label[datasets['target'][i]] = 1
         labels.append(label)
     y = np.array(labels)
     return [x_text, y]
