@@ -49,7 +49,7 @@ else:
     # Transform back to real words
     vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
     vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
-    x_raw = np.array(list(vocab_processor.reverse(x_test)))
+    x_raw = np.array(list(vocab_processor.reverse(x_test)))  #Remove zeroes from x_test first, to remove <UNK>'s
 
 
 
