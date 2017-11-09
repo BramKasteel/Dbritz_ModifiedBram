@@ -1,3 +1,5 @@
+#Also includes a document vector embedding, for projection purpose
+
 import tensorflow as tf
 import numpy as np
 
@@ -39,7 +41,11 @@ class TextCNN(object):
                 tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
                 name="W")
             self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
-            self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
+            self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1, name="embedded_chars")
+        
+#        #Sentence embedding for visualisation purpose
+#        with tf.name_scope("sentence_embedding"):
+#            self.sentence_embedding = tf.squeeze(tf.reduce_mean(self.embedded_chars,axis=1))
 
         # Create a convolution + maxpool layer for each filter size
         pooled_outputs = []
@@ -76,7 +82,7 @@ class TextCNN(object):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
 
         # Final (unnormalized) scores and predictions
-        with tf.name_scope("output"):
+        with tf.variable_scope("output"):
             W = tf.get_variable(
                 "W",
                 shape=[num_filters_total, num_classes],

@@ -13,6 +13,8 @@ import csv
 # Parameters
 # ==================================================
 
+#TODO: update this function to also test on own datafiles
+
 # Data Parameters
 tf.flags.DEFINE_string("positive_data_file", "./data/rt-polaritydata/rt-polarity.pos", "Data source for the positive data.")
 tf.flags.DEFINE_string("negative_data_file", "./data/rt-polaritydata/rt-polarity.neg", "Data source for the negative data.")
@@ -49,7 +51,7 @@ else:
     # Transform back to real words
     vocab_path = os.path.join(FLAGS.checkpoint_dir, "..", "vocab")
     vocab_processor = learn.preprocessing.VocabularyProcessor.restore(vocab_path)
-    x_raw = np.array(list(vocab_processor.reverse(x_test)))  #Remove zeroes from x_test first, to remove <UNK>'s
+    x_raw = np.array(list(vocab_processor.reverse(x_test)))  #TODO: remove <UNK>'s
 
 
 
@@ -62,6 +64,51 @@ print("\nEvaluating...\n")
 checkpoint_file = os.path.abspath(FLAGS.checkpoint_dir + "modelbest")
 
 
+#graph = tf.Graph()
+#with graph.as_default():
+#    session_conf = tf.ConfigProto(
+#      allow_soft_placement=FLAGS.allow_soft_placement,
+#      log_device_placement=FLAGS.log_device_placement)
+#    sess = tf.Session(config=session_conf)
+#    with sess.as_default():
+#        # Load the saved meta graph and restore variables
+#        saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
+#        saver.restore(sess, checkpoint_file)
+#
+#        # Get the placeholders from the graph by name
+#        input_x = graph.get_operation_by_name("input_x").outputs[0]
+#        # input_y = graph.get_operation_by_name("input_y").outputs[0]
+#        dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
+#
+#        # Tensors we want to evaluate
+#        predictions = graph.get_operation_by_name("output/predictions").outputs[0]
+#
+#        # Generate batches for one epoch
+#        batches = data_helpers.batch_iter(list(x_test), FLAGS.batch_size, 1, shuffle=False)
+#
+#        # Collect the predictions here
+#        all_predictions = []
+#
+#        for x_test_batch in batches:
+#            batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0})
+#            all_predictions = np.concatenate([all_predictions, batch_predictions])
+#
+## Print accuracy if y_test is defined
+#if y_test is not None:
+#    correct_predictions = float(sum(all_predictions == y_test))
+#    print("Total number of test examples: {}".format(len(y_test)))
+#    print("Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
+#
+##TODO: remove <UNK>s
+## Save the evaluation to a csv
+#predictions_human_readable = np.column_stack((np.array(x_raw), all_predictions))
+#out_path = os.path.join(FLAGS.checkpoint_dir, "..", "prediction.csv")
+#print("Saving evaluation to {0}".format(out_path))
+#with open(out_path, 'w') as f:
+#    csv.writer(f).writerows(predictions_human_readable)
+#    
+
+#New feature: get the argmax of the pooling layer and the corresponding words
 graph = tf.Graph()
 with graph.as_default():
     session_conf = tf.ConfigProto(
@@ -79,7 +126,16 @@ with graph.as_default():
         dropout_keep_prob = graph.get_operation_by_name("dropout_keep_prob").outputs[0]
 
         # Tensors we want to evaluate
-        predictions = graph.get_operation_by_name("output/predictions").outputs[0]
+        #New::::::::::::::::::::::::
+        convrelu = graph.get_operation_by_name("conv-maxpool-3/relu").outputs[0]
+        pooled_actual = graph.get_operation_by_name("conv-maxpool-3/pool").outputs[0]
+        pooled_here = tf.nn.max_pool(
+                    convrelu,
+                    ksize=[1, 56 - 3 + 1, 1, 1],
+                    strides=[1, 1, 1, 1],
+                    padding='VALID',
+                    name="Brammie")
+        
 
         # Generate batches for one epoch
         batches = data_helpers.batch_iter(list(x_test), FLAGS.batch_size, 1, shuffle=False)
@@ -88,20 +144,15 @@ with graph.as_default():
         all_predictions = []
 
         for x_test_batch in batches:
-            batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0})
-            all_predictions = np.concatenate([all_predictions, batch_predictions])
-
-# Print accuracy if y_test is defined
-if y_test is not None:
-    correct_predictions = float(sum(all_predictions == y_test))
-    print("Total number of test examples: {}".format(len(y_test)))
-    print("Accuracy: {:g}".format(correct_predictions/float(len(y_test))))
-
-## DO THIS AFTER WE KNOW HOW TO BACK TRANSLATE
-
-# Save the evaluation to a csv
-predictions_human_readable = np.column_stack((np.array(x_raw), all_predictions))
-out_path = os.path.join(FLAGS.checkpoint_dir, "..", "prediction.csv")
-print("Saving evaluation to {0}".format(out_path))
-with open(out_path, 'w') as f:
-    csv.writer(f).writerows(predictions_human_readable)
+            #batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0})
+            #all_predictions = np.concatenate([all_predictions, batch_predictions])
+            
+            batch_convrelu = sess.run(convrelu, {input_x: x_test_batch, dropout_keep_prob: 1.0})
+            batch_pooled_actual = sess.run(pooled_actual, {input_x: x_test_batch, dropout_keep_prob:1.0})
+            batch_pooled_here = sess.run(pooled_here, {input_x: x_test_batch, dropout_keep_prob:1.0})
+            check = tf.reduce_mean(tf.cast(tf.equal(batch_pooled_actual,batch_pooled_here),tf.float32))
+            print(batch_pooled_actual.shape)
+            print(batch_pooled_here.shape)
+            print(check.eval())     ##### SHAPOWWWWWW
+            
+        

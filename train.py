@@ -2,6 +2,8 @@
 
 """
 Now includes a split in train/validation/test set. See if it works and how we can use the result
+
+Also includes a document vector embedding, for projection purpose
 """
 
 import tensorflow as tf
@@ -16,6 +18,8 @@ import shutil #For copying files
 import fnmatch #For searching filenames
 from text_cnn import TextCNN
 from tensorflow.contrib import learn
+from tensorflow.contrib.tensorboard.plugins import projector
+import re
 
 # Parameters
 # ==================================================
@@ -63,7 +67,6 @@ if FLAGS.enable_word_embeddings and cfg['word_embeddings']['default'] is not Non
     embedding_dim = cfg['word_embeddings'][embedding_name]['dimension']
 else:
     embedding_dim = FLAGS.embedding_dim    
-
 
 # Data Preparation
 # ==================================================
@@ -161,7 +164,7 @@ with tf.Graph().as_default():
                 grad_summaries.append(grad_hist_summary)
                 grad_summaries.append(sparsity_summary)
         grad_summaries_merged = tf.summary.merge(grad_summaries)        
-
+        
         # Summaries for loss and accuracy
         loss_summary = tf.summary.scalar("loss", cnn.loss)
         acc_summary = tf.summary.scalar("accuracy", cnn.accuracy)
@@ -183,6 +186,22 @@ with tf.Graph().as_default():
         
         # Initialize saver
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
+        
+        # Try to incorporate projector
+#        #1) Write tsv file. Seems to work okay
+#        with open(os.path.join(checkpoint_dir, 'metadata.tsv'),'w') as metadata_file:
+#            metadata_file.write("Sentence\tLabel\n")
+#            sentences = list(vocab_processor.reverse(list(x_train)))
+#            for sentence in sentences:
+#                sentence = re.sub(r"<UNK>", "", sentence)  #TODO: somewhere else
+#                metadata_file.write(sentence+"\t0\n")   
+#                
+                
+        #config_projector = projector.ProjectorConfig()
+        #embedding = config_projector.embeddings.add()
+        #embedding.tensor_name = cnn.sentence_embedding.name
+        #embedding.metadata_path = os.path.join(checkpoint_dir, 'metadata.tsv')
+        #projector.visualize_embeddings(tf.summary.FileWriter(checkpoint_dir), config_projector)
         
         # Write vocabulary
         vocab_processor.save(os.path.join(out_dir, "vocab"))
